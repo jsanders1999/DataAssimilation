@@ -153,6 +153,7 @@ def plot_state(fig,x,i,s):
     plt.savefig("fig_map_%3.3d.png"%i)
     plt.draw()
     plt.pause(0.2)
+    return
 
 def plot_series(t,series_data,s,obs_data):
     # plot timeseries from model and observations
@@ -165,7 +166,8 @@ def plot_series(t,series_data,s,obs_data):
         ax.set_xlabel('time')
         ntimes=min(len(t),obs_data.shape[1])
         ax.plot(t[0:ntimes],obs_data[i,0:ntimes],'k-')
-        plt.savefig(("%s.png"%loc_names[i]).replace(' ','_'))
+        #plt.savefig(("%s.png"%loc_names[i]).replace(' ','_')
+    return
 
     
 def simulate():
@@ -215,6 +217,7 @@ def simulate():
     observed_data[4,:]=obs_values[:]
 
     plot_series(times,series_data,s,observed_data)
+    return
 
 #main program
 if __name__ == "__main__":
