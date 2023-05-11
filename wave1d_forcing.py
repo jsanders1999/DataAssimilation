@@ -6,21 +6,12 @@ import timeseries
 import dateutil 
 import datetime
 
+from ErrorStatistics import RMSE, Bias, InfNorm, OneNorm
+from PlottingFunctions import plot_state, plot_series, plot_basic_bias
+
 minutes_to_seconds=60.
 hours_to_seconds=60.*60.
 days_to_seconds=24.*60.*60.
-
-def RMSE(model_data, observed_data):
-    return 1/model_data.shape[1]*np.linalg.norm(model_data-observed_data, axis = 1)
-
-def Bias(model_data, observed_data):
-    return 1/model_data.shape[1]*np.sum(model_data-observed_data, axis = 1)
-
-def InfNorm(model_data, observed_data):
-    return np.max(model_data-observed_data, axis = 1)
-
-def InfNorm(model_data, observed_data):
-    return np.sum(np.abs(model_data-observed_data), axis = 1)
 
 def settings(forcing):
     s=dict() #hashmap to  use s['g'] as s.g in matlab
@@ -151,48 +142,7 @@ def initialize(settings): #return (h,u,t) at initial time
     settings['B']=B
     return (x,t[0])
 
-def plot_state(fig,x,i,s):
-    #plot all waterlevels and velocities at one time
-    fig.clear()
-    xh=s['x_h']
-    ax1=fig.add_subplot(211)
-    ax1.plot(xh,x[0::2])
-    ax1.set_ylabel('h')
-    xu=s['x_u']
-    ax2=fig.add_subplot(212)
-    ax2.plot(xu,x[1::2])
-    ax2.set_ylabel('u')
-    #plt.savefig("fig_map_%3.3d.png"%i)
-    plt.draw()
-    plt.pause(0.2)
-
-def plot_series(t,series_data,s,obs_data):
-    # plot timeseries from model and observations
-    loc_names=s['loc_names']
-    nseries=len(loc_names)
-    for i in range(nseries):
-        fig,ax=plt.subplots()
-        ax.plot(t,series_data[i,:],'b-')
-        ax.set_title(loc_names[i])
-        ax.set_xlabel('time')
-        ntimes=min(len(t),obs_data.shape[1])
-        ax.plot(t[0:ntimes],obs_data[i,0:ntimes],'k-')
-        #plt.savefig(("%s.png"%loc_names[i]).replace(' ','_'))
-
-def plot_basic_bias(t,x):
-    name = ['Cadzand','Vlissingen','Terneuzen','Hansweert','Bath']
-    for i in range(5):
-        fig,ax=plt.subplots()
-        ax.set_title("Model error for %s"%name[i])
-        ax.plot(t,x[i,:],'b-')
-        ax.set_xlabel('time')
-        ax.set_ylabel('h_model - h_data')
-        ax.set_ylim([-1.5,1.5])
-        #plt.savefig(("errorplot_%s.png"%name[i]))
-    return
-
-
-def simulate(forcing,ensemble_size): #setting forcing=1 adds noise to the western boundary condition, ensemble_size is there for plotting purposes
+def simulate(forcing, ensemble_size): #setting forcing=1 adds noise to the western boundary condition, ensemble_size is there for plotting purposes
     # for plots
     plt.close('all')
     #fig1,ax1 = plt.subplots() #maps: all state vars at one time
@@ -207,9 +157,9 @@ def simulate(forcing,ensemble_size): #setting forcing=1 adds noise to the wester
     loc_names=[]
     names=['Cadzand','Vlissingen','Terneuzen','Hansweert','Bath']
     for i in range(len(xlocs_waterlevel)):
-        loc_names.append('Averaged waterlevel at x=%f km %s for ensemble size %d'%(0.001*xlocs_waterlevel[i],names[i],ensemble_size))
+        loc_names.append('Averaged waterlevel at x=%.0f km %s for ensemble size %d'%(0.001*xlocs_waterlevel[i],names[i],ensemble_size))
     for i in range(len(xlocs_velocity)):
-        loc_names.append('Averaged velocity at x=%f km %s for ensemble size %d'%(0.001*xlocs_velocity[i],names[i],ensemble_size))
+        loc_names.append('Averaged velocity at x=%.0f km %s for ensemble size %d'%(0.001*xlocs_velocity[i],names[i],ensemble_size))
     s['xlocs_waterlevel']=xlocs_waterlevel
     s['xlocs_velocity']=xlocs_velocity
     s['ilocs']=ilocs
@@ -230,7 +180,7 @@ def simulate(forcing,ensemble_size): #setting forcing=1 adds noise to the wester
 #main program
 if __name__ == "__main__":
     ensemble_size = 4
-    s, sim = simulate(0,ensemble_size)
+    s, sim = simulate(1,ensemble_size)
     
     #Ensemble Kalman Filter
     #for i in range(1,ensemble_size):
@@ -242,6 +192,7 @@ if __name__ == "__main__":
     L=s['L']
     dx=s['dx']
     t=s['t'][:]
+
     xlocs_waterlevel=np.array([0.0*L,0.25*L,0.5*L,0.75*L,0.99*L])
     xlocs_velocity=np.array([0.0*L,0.25*L,0.5*L,0.75*L])
     ilocs=np.hstack((np.round((xlocs_waterlevel)/dx)*2,np.round((xlocs_velocity-0.5*dx)/dx)*2+1)).astype(int) 
@@ -259,25 +210,22 @@ if __name__ == "__main__":
     observed_data[4,:]=obs_values[:]
     print(observed_data.shape)
 
-    #rmse = []
-    #bias_plot=np.zeros((len(ilocs),len(t)))
-    #bias = []
-    #for k in range(5):
-    #    sum = 0
-    #    for i in range(len(t)):
-    #        bias_plot[k,i] = sim[k,i]-observed_data[k,i]
-    #        bias_temp =  (sim[k,i]-observed_data[k,i])
-    #        sum = (sim[k,i]-observed_data[k,i])**2
-    #    rmse.append(np.sqrt(sum/len(t)))
-    #    bias.append(bias_temp/len(t))
-
+    #Calculate the error metrics just for the height data at the harbors 
     rmse = RMSE(sim[0:5], observed_data[0:5])
     bias = Bias(sim[0:5], observed_data[0:5])
-    print(rmse)
+    infnorm =InfNorm(sim[0:5], observed_data[0:5])
+    onenorm =OneNorm(sim[0:5], observed_data[0:5])
     print(bias)
-    bias_plot = sim[0:5]-observed_data[0:5]
+    print(rmse)
+    print(infnorm)
+    print(onenorm)
 
-    #plot_series(times,sim,s,observed_data)
-    plot_basic_bias(t,bias_plot)
+    #Plot the simulation results agains the observed data
+    plot_series(s['t'],sim,s,observed_data)
+
+    #Plot the error for each harbor
+    error_plot = sim[0:5]-observed_data[0:5]
+    plot_basic_bias(t, error_plot)
+
     plt.show()
 
