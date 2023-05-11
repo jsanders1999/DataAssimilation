@@ -26,6 +26,9 @@ import timeseries
 import dateutil 
 import datetime
 
+from scipy.fft import fftn, fft
+#from numba import njit
+
 minutes_to_seconds=60.
 hours_to_seconds=60.*60.
 days_to_seconds=24.*60.*60.
@@ -36,9 +39,9 @@ def settings():
     s['g']=9.81 # acceleration of gravity
     s['D']=20.0 # Depth
     s['f']=1/(0.06*days_to_seconds) # damping time scale
-    L=100.e3 # length of the estuary
+    L= 100e3#100.e3 # length of the estuary
     s['L']=L
-    n=100 #number of cells
+    n= 100 #100#number of cells
     s['n']=n    
     # Grid(staggered water levels at 0 (boundary) dx 2dx ... (n-1)dx
     #      velocities at dx/2, 3dx/2, (n-1/2)dx
@@ -69,6 +72,7 @@ def settings():
     s['h_left'] = np.interp(t,bound_t,bound_values)        
     return s
 
+#@njit
 def timestep(x,i,settings): #return (h,u) one timestep later
     # take one timestep
     temp=x.copy() 
@@ -150,9 +154,9 @@ def plot_state(fig,x,i,s):
     ax2=fig.add_subplot(212)
     ax2.plot(xu,x[1::2])
     ax2.set_ylabel('u')
-    plt.savefig("fig_map_%3.3d.png"%i)
+    #plt.savefig("fig_map_%3.3d.png"%i)
     plt.draw()
-    plt.pause(0.2)
+    plt.pause(0.01)
     return
 
 def plot_series(t,series_data,s,obs_data):
@@ -173,7 +177,7 @@ def plot_series(t,series_data,s,obs_data):
 def simulate():
     # for plots
     plt.close('all')
-    fig1,ax1 = plt.subplots() #maps: all state vars at one time
+    #fig1,ax1 = plt.subplots() #maps: all state vars at one time
     # locations of observations
     s=settings()
     L=s['L']
@@ -197,11 +201,13 @@ def simulate():
     t=s['t'][:] #[:40]
     times=s['times'][:] #[:40]
     series_data=np.zeros((len(ilocs),len(t)))
+    series_data_full_u = np.zeros(( s['n'], len(t)))
     for i in np.arange(1,len(t)):
         print('timestep %d'%i)
         x=timestep(x,i,s)
-        plot_state(fig1,x,i,s) #show spatial plot; nice but slow
+        #plot_state(fig1,x,i,s) #show spatial plot; nice but slow
         series_data[:,i]=x[ilocs]
+        series_data_full_u[:,i] = x[0::2]
         
     #load observations
     (obs_times,obs_values)=timeseries.read_series('tide_cadzand.txt')
@@ -215,9 +221,55 @@ def simulate():
     observed_data[3,:]=obs_values[:]
     (obs_times,obs_values)=timeseries.read_series('tide_bath.txt')
     observed_data[4,:]=obs_values[:]
-
+    
+    WavelengthAndPeriod(series_data_full_u, s)
     plot_series(times,series_data,s,observed_data)
     return
+
+def WavelengthAndPeriod(series_data, s):
+    print(series_data.shape)
+    Z = fftn(series_data[:,:])
+    fig0, ax0 = plt.subplots(1,1)
+    #fig1, ax1 = plt.subplots(1,1)
+    #fig2, ax2 = plt.subplots(1,1)
+    #fig3, ax3 = plt.subplots(1,1)
+    #fig4, ax4 = plt.subplots(1,1)
+    x = s['x_h']/1e3
+    t = s['t']/hours_to_seconds
+    T, X = np.meshgrid(t, x)
+    ax0.pcolormesh(T, X, series_data)
+    ax0.set_xlabel("Time [hours]")
+    ax0.set_ylabel("Location [km]")
+    v = 12.75 #m/s
+    #for l in np.arange(0,t[-1], 6.2):
+        #ax0.plot(x/v *(1e3/hours_to_seconds)+l, x, color = "r")
+    ax0.plot([12.416*3,12.416*3], [0, 575], color = "r", marker = "s")
+    ax0.set_xlim(x[[0,-1]])
+    ax0.set_xlim(t[[0,-1]])
+
+    #i = np.arange(Z.shape[0]) #wx
+    #j = np.arange(Z.shape[1]) #wt
+    #J, I = np.meshgrid(j,i)
+    #ax1.pcolormesh(J, I, np.abs(Z), cmap = 'Reds')
+    
+    #ax1.set_ylabel(r"spatial frequency index $i$")
+    #ax1.set_xlabel(r"time frequency index $j$")
+
+    #ax2.pcolormesh(np.real(Z))
+    #Z_x = 1/Z.shape[1]*np.sum(np.abs(Z), axis = 1 )
+    #Z_t = 1/Z.shape[0]*np.sum(np.abs(Z), axis = 0 )
+    
+    #ax3.plot(i, Z_x, marker = ".", markersize = 2,  linestyle="None")
+    #ax3.set_xlabel(r"spatial frequency index $i$")
+    #ax3.set_ylabel(r"DFT components averaged over $j$")
+
+    #ax4.plot(j, Z_t, marker = ".", markersize = 2,  linestyle="None")
+    #ax4.set_xlabel(r"time frequency index $j$")
+    #ax4.set_ylabel(r"DFT components averaged over $i$")
+    plt.show()
+
+    return
+
 
 #main program
 if __name__ == "__main__":
