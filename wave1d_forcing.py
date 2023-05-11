@@ -10,6 +10,18 @@ minutes_to_seconds=60.
 hours_to_seconds=60.*60.
 days_to_seconds=24.*60.*60.
 
+def RMSE(model_data, observed_data):
+    return 1/model_data.shape[1]*np.linalg.norm(model_data-observed_data, axis = 1)
+
+def Bias(model_data, observed_data):
+    return 1/model_data.shape[1]*np.sum(model_data-observed_data, axis = 1)
+
+def InfNorm(model_data, observed_data):
+    return np.max(model_data-observed_data, axis = 1)
+
+def InfNorm(model_data, observed_data):
+    return np.sum(np.abs(model_data-observed_data), axis = 1)
+
 def settings(forcing):
     s=dict() #hashmap to  use s['g'] as s.g in matlab
     # Constants
@@ -36,7 +48,7 @@ def settings(forcing):
     s['dt']=dt
     reftime=dateutil.parser.parse("201312050000") #times in secs relative
     s['reftime']=reftime
-    t=dt*np.arange(np.round(t_f/dt))+dt #MVL moved times to end of each timestep.
+    t=dt*np.arange(np.round(t_f/dt)+1) #MVL moved times to end of each timestep.
     s['t']=t
     if (forcing == 1):
         np.random.seed(forcing)
@@ -48,7 +60,6 @@ def settings(forcing):
         s['h_left'] = 2.5 *np.sin(2.0*np.pi/(12.*hours_to_seconds)*t) + noise
         '''
         #2.1) read from file + forcing
-        
         (bound_times,bound_values)=timeseries.read_series('tide_cadzand.txt')
         bound_t=np.zeros(len(bound_times))
         for i in np.arange(len(bound_times)):
@@ -166,7 +177,7 @@ def plot_series(t,series_data,s,obs_data):
         ax.set_xlabel('time')
         ntimes=min(len(t),obs_data.shape[1])
         ax.plot(t[0:ntimes],obs_data[i,0:ntimes],'k-')
-        plt.savefig(("%s.png"%loc_names[i]).replace(' ','_'))
+        #plt.savefig(("%s.png"%loc_names[i]).replace(' ','_'))
 
 def plot_basic_bias(t,x):
     name = ['Cadzand','Vlissingen','Terneuzen','Hansweert','Bath']
@@ -177,14 +188,14 @@ def plot_basic_bias(t,x):
         ax.set_xlabel('time')
         ax.set_ylabel('h_model - h_data')
         ax.set_ylim([-1.5,1.5])
-        plt.savefig(("errorplot_%s.png"%name[i]))
+        #plt.savefig(("errorplot_%s.png"%name[i]))
     return
 
 
 def simulate(forcing,ensemble_size): #setting forcing=1 adds noise to the western boundary condition, ensemble_size is there for plotting purposes
     # for plots
     plt.close('all')
-    fig1,ax1 = plt.subplots() #maps: all state vars at one time
+    #fig1,ax1 = plt.subplots() #maps: all state vars at one time
     # locations of observations
     s=settings(forcing)
     L=s['L']
@@ -208,22 +219,24 @@ def simulate(forcing,ensemble_size): #setting forcing=1 adds noise to the wester
     t=s['t'][:] #[:40]
     times=s['times'][:] #[:40]
     series_data=np.zeros((len(ilocs),len(t)))
-    for i in np.arange(1,len(t)):
+    for i in np.arange(0,len(t)):
         #print('timestep %d'%i)
         x=timestep(x,i,s)
         #plot_state(fig1,x,i,s) #show spatial plot; nice but slow
         series_data[:,i]=x[ilocs]
     
-    return s,series_data
+    return s, series_data
 
 #main program
 if __name__ == "__main__":
     ensemble_size = 4
-    s,sim = simulate(1,ensemble_size)
-    for i in range(1,ensemble_size):
-        s,sim_new = simulate(1,ensemble_size)
-        sim = sim +sim_new
-    sim = sim/ensemble_size
+    s, sim = simulate(0,ensemble_size)
+    
+    #Ensemble Kalman Filter
+    #for i in range(1,ensemble_size):
+    #    s, sim_new = simulate(1,ensemble_size)
+    #    sim = sim +sim_new
+    #sim = sim/ensemble_size
 
     times=s['times'][:] #[:40]
     L=s['L']
@@ -244,21 +257,27 @@ if __name__ == "__main__":
     observed_data[3,:]=obs_values[:]
     (obs_times,obs_values)=timeseries.read_series('tide_bath.txt')
     observed_data[4,:]=obs_values[:]
+    print(observed_data.shape)
 
-    rmse = []
-    bias_plot=np.zeros((len(ilocs),len(t)))
-    bias = []
-    for k in range(5):
-        sum = 0
-        for i in range(len(t)):
-            bias_plot[k,i] = sim[k,i]-observed_data[k,i]
-            bias_temp =  (sim[k,i]-observed_data[k,i])
-            sum = (sim[k,i]-observed_data[k,i])**2
-        rmse.append(np.sqrt(sum/len(t)))
-        bias.append(bias_temp/len(t))
+    #rmse = []
+    #bias_plot=np.zeros((len(ilocs),len(t)))
+    #bias = []
+    #for k in range(5):
+    #    sum = 0
+    #    for i in range(len(t)):
+    #        bias_plot[k,i] = sim[k,i]-observed_data[k,i]
+    #        bias_temp =  (sim[k,i]-observed_data[k,i])
+    #        sum = (sim[k,i]-observed_data[k,i])**2
+    #    rmse.append(np.sqrt(sum/len(t)))
+    #    bias.append(bias_temp/len(t))
+
+    rmse = RMSE(sim[0:5], observed_data[0:5])
+    bias = Bias(sim[0:5], observed_data[0:5])
     print(rmse)
     print(bias)
+    bias_plot = sim[0:5]-observed_data[0:5]
 
-    plot_series(times,sim,s,observed_data)
+    #plot_series(times,sim,s,observed_data)
     plot_basic_bias(t,bias_plot)
     plt.show()
+

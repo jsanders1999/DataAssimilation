@@ -266,7 +266,7 @@ def WavelengthAndPeriod(series_data, s):
     #ax4.plot(j, Z_t, marker = ".", markersize = 2,  linestyle="None")
     #ax4.set_xlabel(r"time frequency index $j$")
     #ax4.set_ylabel(r"DFT components averaged over $i$")
-    plt.show()
+    #plt.show()
 
     return
 
