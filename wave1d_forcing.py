@@ -177,10 +177,52 @@ def simulate(forcing, ensemble_size): #setting forcing=1 adds noise to the weste
     
     return s, series_data
 
+def simulateEnsemble(forcing, ensemble_size): #setting forcing=1 adds noise to the western boundary condition, ensemble_size is there for plotting purposes
+    # for plots
+    plt.close('all')
+    #fig1,ax1 = plt.subplots() #maps: all state vars at one time
+    # locations of observations
+    s=settings(forcing)
+    L=s['L']
+    dx=s['dx']
+    xlocs_waterlevel=np.array([0.0*L,0.25*L,0.5*L,0.75*L,0.99*L])
+    xlocs_velocity=np.array([0.0*L,0.25*L,0.5*L,0.75*L])
+    ilocs=np.hstack((np.round((xlocs_waterlevel)/dx)*2,np.round((xlocs_velocity-0.5*dx)/dx)*2+1)).astype(int) #indices of waterlevel locations in x
+    #print(ilocs)
+    loc_names=[]
+    names=['Cadzand','Vlissingen','Terneuzen','Hansweert','Bath']
+    for i in range(len(xlocs_waterlevel)):
+        loc_names.append('Averaged waterlevel at x=%.0f km %s for ensemble size %d'%(0.001*xlocs_waterlevel[i],names[i],ensemble_size))
+    for i in range(len(xlocs_velocity)):
+        loc_names.append('Averaged velocity at x=%.0f km %s for ensemble size %d'%(0.001*xlocs_velocity[i],names[i],ensemble_size))
+    s['xlocs_waterlevel']=xlocs_waterlevel
+    s['xlocs_velocity']=xlocs_velocity
+    s['ilocs']=ilocs
+    s['loc_names']=loc_names
+    #
+    (x,t0)=initialize(s)
+    x_ensemble = np.tile(x, (ensemble_size, 1)) #shape: (ensemble size, 2*n)
+    t=s['t'][:] #[:40]
+    times=s['times'][:] #[:40]
+    series_data=np.zeros((len(ilocs),len(t)))
+
+    for i in np.arange(0,len(t)):
+        #print('timestep %d'%i)
+        for j in range(ensemble_size):
+            sig = 0.01
+            noise = np.concatenate((np.random.normal(loc = 0.0, scale = sig, size = s['n']), np.zeros(s['n']) ))
+            x_ensemble[j,:] = timestep(x_ensemble[j,:],i,s) + noise
+        x=timestep(x,i,s)
+        #plot_state(fig1,x,i,s) #show spatial plot; nice but slow
+        series_data[:,i]=np.mean(x_ensemble[:, ilocs], axis = 0)#x[ilocs]
+    
+    return s, series_data
+
 #main program
 if __name__ == "__main__":
     ensemble_size = 4
-    s, sim = simulate(1,ensemble_size)
+    #s, sim = simulate(0,ensemble_size)
+    s, sim = simulateEnsemble(0,ensemble_size)
     
     #Ensemble Kalman Filter
     #for i in range(1,ensemble_size):
