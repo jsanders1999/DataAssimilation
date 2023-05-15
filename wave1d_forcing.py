@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import timeseries
 import dateutil 
 import datetime
+from numba import njit
 
 from ErrorStatistics import RMSE, Bias, InfNorm, OneNorm
 from PlottingFunctions import plot_state, plot_series, plot_basic_bias
@@ -13,7 +14,7 @@ minutes_to_seconds=60.
 hours_to_seconds=60.*60.
 days_to_seconds=24.*60.*60.
 
-def settings(forcing):
+def settings(forcing, ensemble_size):
     s=dict() #hashmap to  use s['g'] as s.g in matlab
     # Constants
     s['g']=9.81 # acceleration of gravity
@@ -42,23 +43,7 @@ def settings(forcing):
     t=dt*np.arange(np.round(t_f/dt)+1) #MVL moved times to end of each timestep.
     s['t']=t
     if (forcing == 1):
-        np.random.seed(forcing)
-        #1.1) simple function with forcing
-        '''
-        noise = np.zeros(len(t))
-        for i in range(1,len(t)):
-            noise[i] = np.exp(-dt/6)*noise[i-1] + np.random.default_rng().normal(0, 0.2*(np.sqrt(1-np.exp(-dt/3))))
-        s['h_left'] = 2.5 *np.sin(2.0*np.pi/(12.*hours_to_seconds)*t) + noise
-        '''
-        #2.1) read from file + forcing
-        (bound_times,bound_values)=timeseries.read_series('tide_cadzand.txt')
-        bound_t=np.zeros(len(bound_times))
-        for i in np.arange(len(bound_times)):
-            bound_t[i]=(bound_times[i]-reftime).total_seconds()
-        noise = np.zeros(len(t))
-        for i in range(1,len(t)):
-            noise[i] = np.exp(-dt/6)*noise[i-1] + np.random.default_rng().normal(0, 0.2*(np.sqrt(1-np.exp(-dt/3))))
-        s['h_left'] = np.interp(t,bound_t,bound_values) + noise
+        s['h_left'] = generateBoundarywNoise(dt, reftime, t, ensemble_size)
         
     else:
         #boundary (western water level)
@@ -72,13 +57,40 @@ def settings(forcing):
         s['h_left'] = np.interp(t,bound_t,bound_values)   
     return s
 
-def timestep(x,i,settings): #return (h,u) one timestep later
+def generateBoundarywNoise(dt, reftime, t, ensemble_size):
+    np.random.seed(1234)
+    #1.1) simple function with forcing
+    '''
+    noise = np.zeros(len(t))
+    for i in range(1,len(t)):
+        noise[i] = np.exp(-dt/6)*noise[i-1] + np.random.default_rng().normal(0, 0.2*(np.sqrt(1-np.exp(-dt/3))))
+    s['h_left'] = 2.5 *np.sin(2.0*np.pi/(12.*hours_to_seconds)*t) + noise
+    '''
+    #2.1) read from file + forcing
+    (bound_times,bound_values) = timeseries.read_series('tide_cadzand.txt')
+    bound_t = np.zeros(len(bound_times))
+    for i in np.arange(len(bound_times)):
+        bound_t[i] = (bound_times[i]-reftime).total_seconds()
+    #Create an array to store the noise for all the ensebles
+    noise = np.zeros((ensemble_size, len(t)))
+    #std of the noise
+    sigma = 0.2*(np.sqrt(1-np.exp(-dt/3)))
+    alpha = np.exp(-dt/6)
+    #Generate the different noise forcing terms that will added to the given cadzand data
+    for i in range(1,len(t)):
+        noise[:,i] = alpha*noise[:,i-1] + np.random.normal(0, sigma, size = (ensemble_size) )
+    #Add the noise to the cadzand data
+    BoundaryNoNoise = np.repeat([np.interp(t,bound_t,bound_values)], ensemble_size, axis = 0)
+    #Return the boundary with the noise added
+    return BoundaryNoNoise + noise
+
+def timestep(x,i,settings, ensemble_ind): #return (h,u) one timestep later
     # take one timestep
     temp=x.copy() 
     A=settings['A']
     B=settings['B']
     rhs=B.dot(temp) #B*x
-    rhs[0]=settings['h_left'][i] #left boundary
+    rhs[0]=settings['h_left'][ensemble_ind, i] #left boundary
     newx=spsolve(A,rhs)
     return newx
 
@@ -174,7 +186,6 @@ def simulate(forcing, ensemble_size): #setting forcing=1 adds noise to the weste
         x=timestep(x,i,s)
         #plot_state(fig1,x,i,s) #show spatial plot; nice but slow
         series_data[:,i]=x[ilocs]
-    
     return s, series_data
 
 def simulateEnsemble(forcing, ensemble_size): #setting forcing=1 adds noise to the western boundary condition, ensemble_size is there for plotting purposes
@@ -182,7 +193,7 @@ def simulateEnsemble(forcing, ensemble_size): #setting forcing=1 adds noise to t
     plt.close('all')
     #fig1,ax1 = plt.subplots() #maps: all state vars at one time
     # locations of observations
-    s=settings(forcing)
+    s=settings(forcing, ensemble_size)
     L=s['L']
     dx=s['dx']
     xlocs_waterlevel=np.array([0.0*L,0.25*L,0.5*L,0.75*L,0.99*L])
@@ -201,6 +212,7 @@ def simulateEnsemble(forcing, ensemble_size): #setting forcing=1 adds noise to t
     s['loc_names']=loc_names
     #
     (x,t0)=initialize(s)
+    #Make an array of ensemble_size realizations of x
     x_ensemble = np.tile(x, (ensemble_size, 1)) #shape: (ensemble size, 2*n)
     t=s['t'][:] #[:40]
     times=s['times'][:] #[:40]
@@ -209,25 +221,14 @@ def simulateEnsemble(forcing, ensemble_size): #setting forcing=1 adds noise to t
     for i in np.arange(0,len(t)):
         #print('timestep %d'%i)
         for j in range(ensemble_size):
-            x_ensemble[j,:] = timestep(x_ensemble[j,:],i,s)
-        x=timestep(x,i,s)
+            x_ensemble[j,:] = timestep(x_ensemble[j,:],i,s, j)
+        #x=timestep(x,i,s)
         #plot_state(fig1,x,i,s) #show spatial plot; nice but slow
         series_data[:,i]=np.mean(x_ensemble[:, ilocs], axis = 0)#x[ilocs]
     
     return s, series_data
 
-#main program
-if __name__ == "__main__":
-    ensemble_size = 4
-    #s, sim = simulate(0,ensemble_size)
-    s, sim = simulateEnsemble(0,ensemble_size)
-    
-    #Ensemble Kalman Filter
-    #for i in range(1,ensemble_size):
-    #    s, sim_new = simulate(1,ensemble_size)
-    #    sim = sim +sim_new
-    #sim = sim/ensemble_size
-
+def load_observations(s):
     times=s['times'][:] #[:40]
     L=s['L']
     dx=s['dx']
@@ -248,24 +249,44 @@ if __name__ == "__main__":
     observed_data[3,:]=obs_values[:]
     (obs_times,obs_values)=timeseries.read_series('tide_bath.txt')
     observed_data[4,:]=obs_values[:]
-    print(observed_data.shape)
+    return observed_data
+
+
+def TestEnsemble():
+    #Run the model for the given ensemble size
+    ensemble_size = 1
+    s, sim = simulateEnsemble(1,ensemble_size)
+    
+    #Load the observed data
+    observed_data = load_observations(s)
 
     #Calculate the error metrics just for the height data at the harbors 
     rmse = RMSE(sim[0:5], observed_data[0:5])
     bias = Bias(sim[0:5], observed_data[0:5])
     infnorm =InfNorm(sim[0:5], observed_data[0:5])
     onenorm =OneNorm(sim[0:5], observed_data[0:5])
-    print(bias)
-    print(rmse)
-    print(infnorm)
-    print(onenorm)
+    print("Locations", ['Cadzand','Vlissingen','Terneuzen','Hansweert','Bath'])
+    print("Bias: ", bias)
+    print("RMSE: ", rmse)
+    print("InfNorm: ", infnorm)
+    print("OneNorm: ", onenorm)
 
     #Plot the simulation results agains the observed data
     plot_series(s['t'],sim,s,observed_data)
 
     #Plot the error for each harbor
     error_plot = sim[0:5]-observed_data[0:5]
-    plot_basic_bias(t, error_plot)
+    plot_basic_bias(s['t'], error_plot)
 
     plt.show()
+    return
 
+
+
+
+#main program
+if __name__ == "__main__":
+    TestEnsemble()
+    
+    
+    
