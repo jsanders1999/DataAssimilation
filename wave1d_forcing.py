@@ -209,9 +209,7 @@ def simulateEnsemble(forcing, ensemble_size): #setting forcing=1 adds noise to t
     for i in np.arange(0,len(t)):
         #print('timestep %d'%i)
         for j in range(ensemble_size):
-            sig = 0.01
-            noise = np.concatenate((np.random.normal(loc = 0.0, scale = sig, size = s['n']), np.zeros(s['n']) ))
-            x_ensemble[j,:] = timestep(x_ensemble[j,:],i,s) + noise
+            x_ensemble[j,:] = timestep(x_ensemble[j,:],i,s)
         x=timestep(x,i,s)
         #plot_state(fig1,x,i,s) #show spatial plot; nice but slow
         series_data[:,i]=np.mean(x_ensemble[:, ilocs], axis = 0)#x[ilocs]
