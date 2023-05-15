@@ -96,7 +96,7 @@ def timestep(x,i,settings, ensemble_ind): #return (h,u) one timestep later
     return newx
 
 #FOR NO ENSEBLE SIZE (1 model). USED BY SIMULATE
-def timestep(x,i,settings): #return (h,u) one timestep later
+def timestep_noensemble(x,i,settings): #return (h,u) one timestep later
     # take one timestep
     temp=x.copy() 
     A=settings['A']
@@ -195,7 +195,7 @@ def simulate(forcing): #setting forcing=1 adds noise to the western boundary con
     series_data=np.zeros((len(ilocs),len(t)))
     for i in np.arange(0,len(t)):
         #print('timestep %d'%i)
-        x=timestep(x,i,s)
+        x=timestep_noensemble(x,i,s)
         #plot_state(fig1,x,i,s) #show spatial plot; nice but slow
         series_data[:,i]=x[ilocs]
     return s, series_data
@@ -264,7 +264,7 @@ def load_observations(s):
     return observed_data
 
 
-def TestEnsemble():
+def TestEnsemble(ShowPlots = True):
     #Run the model for the given ensemble size
     ensemble_size = 1
     s, sim = simulateEnsemble(ensemble_size)
@@ -277,23 +277,24 @@ def TestEnsemble():
     bias = Bias(sim[0:5], observed_data[0:5])
     infnorm =InfNorm(sim[0:5], observed_data[0:5])
     onenorm =OneNorm(sim[0:5], observed_data[0:5])
-    print("Locations", ['Cadzand','Vlissingen','Terneuzen','Hansweert','Bath'])
-    print("Bias: ", bias)
-    print("RMSE: ", rmse)
-    print("InfNorm: ", infnorm)
-    print("OneNorm: ", onenorm)
+    print(["Locations", 'Cadzand','Vlissingen','Terneuzen','Hansweert','Bath'])
+    print(["Bias: ", *bias])
+    print(["RMSE: ", *rmse])
+    print(["InfNorm: ", *infnorm])
+    print(["OneNorm: ", *onenorm])
 
-    #Plot the simulation results agains the observed data
-    plot_series(s['t'],sim,s,observed_data)
+    if ShowPlots:
+        #Plot the simulation results agains the observed data
+        plot_series(s['t'],sim,s,observed_data)
 
-    #Plot the error for each harbor
-    error_plot = sim[0:5]-observed_data[0:5]
-    plot_basic_bias(s['t'], error_plot)
+        #Plot the error for each harbor
+        error_plot = sim[0:5]-observed_data[0:5]
+        plot_basic_bias(s['t'], error_plot)
 
-    plt.show()
+        plt.show()
     return
 
-def TestOneSimNoForcing():
+def TestOneSimNoForcing(ShowPlots = True):
     #Run the model for the given ensemble size
     s, sim = simulate(forcing = 0)
     
@@ -305,20 +306,21 @@ def TestOneSimNoForcing():
     bias = Bias(sim[0:5], observed_data[0:5])
     infnorm =InfNorm(sim[0:5], observed_data[0:5])
     onenorm =OneNorm(sim[0:5], observed_data[0:5])
-    print("Locations", ['Cadzand','Vlissingen','Terneuzen','Hansweert','Bath'])
-    print("Bias: ", bias)
-    print("RMSE: ", rmse)
-    print("InfNorm: ", infnorm)
-    print("OneNorm: ", onenorm)
+    print(["Locations", 'Cadzand','Vlissingen','Terneuzen','Hansweert','Bath'])
+    print(["Bias: ", *bias])
+    print(["RMSE: ", *rmse])
+    print(["InfNorm: ", *infnorm])
+    print(["OneNorm: ", *onenorm])
 
-    #Plot the simulation results agains the observed data
-    plot_series(s['t'],sim,s,observed_data)
+    if ShowPlots:
+        #Plot the simulation results agains the observed data
+        plot_series(s['t'],sim,s,observed_data)
 
-    #Plot the error for each harbor
-    error_plot = sim[0:5]-observed_data[0:5]
-    plot_basic_bias(s['t'], error_plot)
+        #Plot the error for each harbor
+        error_plot = sim[0:5]-observed_data[0:5]
+        plot_basic_bias(s['t'], error_plot)
 
-    plt.show()
+        plt.show()
     return
 
 
@@ -326,8 +328,8 @@ def TestOneSimNoForcing():
 
 #main program
 if __name__ == "__main__":
-    #TestEnsemble()
-    TestOneSimNoForcing()
+    TestEnsemble(False)
+    TestOneSimNoForcing(False)
     
     
     
