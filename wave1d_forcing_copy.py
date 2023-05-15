@@ -217,7 +217,9 @@ def simulateEnsemble(forcing, ensemble_size): #setting forcing=1 adds noise to t
     t=s['t'][:] #[:40]
     times=s['times'][:] #[:40]
     series_data=np.zeros((len(ilocs),len(t)))
-
+    observed_data = load_observations(s)
+    H = np.hstack((np.eye(5),np.zeros((5,4))))
+    R = np.eye(5)*0.01
     for i in np.arange(0,len(t)):
         #print('timestep %d'%i)
         for j in range(ensemble_size):
@@ -225,8 +227,49 @@ def simulateEnsemble(forcing, ensemble_size): #setting forcing=1 adds noise to t
         #x=timestep(x,i,s)
         #plot_state(fig1,x,i,s) #show spatial plot; nice but slow
         series_data[:,i]=np.mean(x_ensemble[:, ilocs], axis = 0)#x[ilocs]
+        #B = np.cov(series_data[:,i].T)
+        B = makeB(ensemble_size,x_ensemble[:,ilocs],series_data,i) #np.cov(x_ensemble[:, ilocs])
+        print(np.shape(x_ensemble[:, ilocs]))
+        print(np.shape(B))
+        series_data[:,i], B = TestEnKF(x_ensemble[:, ilocs],observed_data[:,i],H,H,R,B)
     
     return s, series_data
+
+def TestEnKF(x,w,ObsOp,JObsOp,R,B):
+    # The analysis step for the (stochastic) ensemble Kalman filter
+    # with virtual observations
+    n,N = x.shape # n is the state dimension and N is the size of ensemble
+    print(np.shape(w))
+    m = w.shape[0] # m is the size of measurement vector
+    # compute the mean of forecast ensemble
+    x1=np.mean(x, axis = 0)
+    # compute Jacobian of observation operator at ub
+    Dh = JObsOp
+    # compute Kalman gain
+    D = Dh@B@Dh.T + R
+    print(np.shape(B))
+    print(np.shape(Dh))
+    print(np.shape(D))
+    K = B @ Dh.T @ np.linalg.inv(D)
+    wi = np.zeros([m,N])
+    xai = np.zeros([n,N])
+    for i in range(N):
+        # create virtual observations
+        wi[:,i] = w + np.random.multivariate_normal(np.zeros(m), R)
+        # compute analysis ensemble
+        xai[:,i] = x[:,i] + K @ (wi[:,i]-ObsOp@x[:,i])
+    # compute the mean of analysis ensemble
+    #xa = np.mean(xai)
+    # compute analysis error covariance matrix
+    P = np.cov(xai)
+    return xai, P
+
+def makeB(ensemble_size,x,series_data,i): # x = x_ensemble[:,ilocs]
+    B1 = np.zeros((9,9))
+    for j in range(ensemble_size):
+        B1 += (x[j,:] - series_data[:,i])@(x[j,:] - series_data[:,i]).T
+    return 1/(ensemble_size -1)*B1
+
 
 def load_observations(s):
     times=s['times'][:] #[:40]
@@ -254,7 +297,7 @@ def load_observations(s):
 
 def TestEnsemble():
     #Run the model for the given ensemble size
-    ensemble_size = 4
+    ensemble_size = 6
     s, sim = simulateEnsemble(1,ensemble_size)
     
     #Load the observed data
