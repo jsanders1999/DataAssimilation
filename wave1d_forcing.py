@@ -8,7 +8,7 @@ import datetime
 from numba import njit
 
 from ErrorStatistics import RMSE, Bias, InfNorm, OneNorm
-from PlottingFunctions import plot_state, plot_series, plot_basic_bias
+from PlottingFunctions import plot_state, plot_series, plot_ensemble_series, plot_ensemble_series_uncertainty, plot_basic_bias
 
 minutes_to_seconds=60.
 hours_to_seconds=60.*60.
@@ -228,7 +228,8 @@ def simulateEnsemble(ensemble_size): #setting forcing=1 adds noise to the wester
     x_ensemble = np.tile(x, (ensemble_size, 1)) #shape: (ensemble size, 2*n)
     t=s['t'][:] #[:40]
     times=s['times'][:] #[:40]
-    series_data=np.zeros((len(ilocs),len(t)))
+    series_data_mean=np.zeros((len(ilocs),len(t)))
+    series_data_full=np.zeros((ensemble_size, len(ilocs),len(t)))
 
     for i in np.arange(0,len(t)):
         #print('timestep %d'%i)
@@ -236,9 +237,11 @@ def simulateEnsemble(ensemble_size): #setting forcing=1 adds noise to the wester
             x_ensemble[j,:] = timestep(x_ensemble[j,:],i,s, j)
         #x=timestep(x,i,s)
         #plot_state(fig1,x,i,s) #show spatial plot; nice but slow
-        series_data[:,i]=np.mean(x_ensemble[:, ilocs], axis = 0)#x[ilocs]
+        series_data_mean[:,i]=np.mean(x_ensemble[:, ilocs], axis = 0)#x[ilocs]
+        series_data_full[:,:, i] = x_ensemble[:, ilocs]
+
     
-    return s, series_data
+    return s, series_data_mean, series_data_full
 
 def load_observations(s):
     times=s['times'][:] #[:40]
@@ -266,18 +269,18 @@ def load_observations(s):
 
 def TestEnsemble(ShowPlots = True):
     #Run the model for the given ensemble size
-    ensemble_size = 1
-    s, sim = simulateEnsemble(ensemble_size)
+    ensemble_size = 50
+    s, sim_mean, sim_full = simulateEnsemble(ensemble_size)
     
     #Load the observed data
     observed_data = load_observations(s)
 
     #Calculate the error metrics just for the height data at the harbors 
-    rmse = RMSE(sim[0:5], observed_data[0:5])
-    bias = Bias(sim[0:5], observed_data[0:5])
-    infnorm =InfNorm(sim[0:5], observed_data[0:5])
-    onenorm =OneNorm(sim[0:5], observed_data[0:5])
-    print(["Locations", 'Cadzand','Vlissingen','Terneuzen','Hansweert','Bath'])
+    rmse = RMSE(sim_mean[0:5], observed_data[0:5])
+    bias = Bias(sim_mean[0:5], observed_data[0:5])
+    infnorm =InfNorm(sim_mean[0:5], observed_data[0:5])
+    onenorm =OneNorm(sim_mean[0:5], observed_data[0:5])
+    print(["Locations: ", 'Cadzand','Vlissingen','Terneuzen','Hansweert','Bath'])
     print(["Bias: ", *bias])
     print(["RMSE: ", *rmse])
     print(["InfNorm: ", *infnorm])
@@ -285,10 +288,10 @@ def TestEnsemble(ShowPlots = True):
 
     if ShowPlots:
         #Plot the simulation results agains the observed data
-        plot_series(s['t'],sim,s,observed_data)
+        plot_ensemble_series_uncertainty(s['t'],sim_full,s,observed_data)
 
         #Plot the error for each harbor
-        error_plot = sim[0:5]-observed_data[0:5]
+        error_plot = sim_mean[0:5]-observed_data[0:5]
         plot_basic_bias(s['t'], error_plot)
 
         plt.show()
@@ -306,7 +309,7 @@ def TestOneSimNoForcing(ShowPlots = True):
     bias = Bias(sim[0:5], observed_data[0:5])
     infnorm =InfNorm(sim[0:5], observed_data[0:5])
     onenorm =OneNorm(sim[0:5], observed_data[0:5])
-    print(["Locations", 'Cadzand','Vlissingen','Terneuzen','Hansweert','Bath'])
+    print(["Locations: ", 'Cadzand','Vlissingen','Terneuzen','Hansweert','Bath'])
     print(["Bias: ", *bias])
     print(["RMSE: ", *rmse])
     print(["InfNorm: ", *infnorm])
@@ -328,7 +331,7 @@ def TestOneSimNoForcing(ShowPlots = True):
 
 #main program
 if __name__ == "__main__":
-    TestEnsemble(False)
+    TestEnsemble(True)
     TestOneSimNoForcing(False)
     
     

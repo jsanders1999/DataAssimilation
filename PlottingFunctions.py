@@ -34,6 +34,48 @@ def plot_series(t,series_data,s,obs_data):
         ax.legend()
         #plt.savefig(("%s.png"%loc_names[i]).replace(' ','_'))
 
+def plot_ensemble_series(t,series_data,s,obs_data):
+    # plot timeseries from model and observations
+    loc_names=s['loc_names']
+    nseries=len(loc_names)
+    for i in range(nseries):
+        fig,ax=plt.subplots()
+        for n in range(series_data.shape[0]):
+            ax.plot(np.array(t)/3600,series_data[n,i,:],'b-')#, label = "Model data {}".format{n})
+        ax.set_title(loc_names[i])
+        ax.set_xlabel('time [hours]')
+        if i<5:
+            ax.set_ylabel('height [m]')
+        else:
+            ax.set_ylabel('velocity [m/s]')
+        ntimes=min(len(t),obs_data.shape[1])
+        ax.plot(np.array(t[0:ntimes])/3600 ,obs_data[i,0:ntimes],'k-', label = "Observed data")
+        ax.legend()
+        #plt.savefig(("%s.png"%loc_names[i]).replace(' ','_'))
+
+def plot_ensemble_series_uncertainty(t,series_data,s,obs_data):
+    # plot timeseries from model and observations
+    loc_names=s['loc_names']
+    nseries=len(loc_names)
+    mean_arr = np.mean(series_data[:,:,:], axis = 0)
+    std_arr = np.std(series_data[:,:,:], axis = 0)
+    for i in range(nseries):
+        fig,ax=plt.subplots()
+        
+        ax.plot(np.array(t)/3600,mean_arr[i,:],'b-', label = "Ensemble data")
+        ax.plot(np.array(t)/3600,mean_arr[i,:] + std_arr[i,:],'b--')
+        ax.plot(np.array(t)/3600,mean_arr[i,:] - std_arr[i,:],'b--')
+        ax.set_title(loc_names[i])
+        ax.set_xlabel('time [hours]')
+        if i<5:
+            ax.set_ylabel('height [m]')
+        else:
+            ax.set_ylabel('velocity [m/s]')
+        ntimes=min(len(t),obs_data.shape[1])
+        ax.plot(np.array(t[0:ntimes])/3600 ,obs_data[i,0:ntimes],'k-', label = "Observed data")
+        ax.legend()
+        #plt.savefig(("%s.png"%loc_names[i]).replace(' ','_'))
+
 def plot_basic_bias(t,x):
     name = ['Cadzand','Vlissingen','Terneuzen','Hansweert','Bath']
     for i in range(5):
