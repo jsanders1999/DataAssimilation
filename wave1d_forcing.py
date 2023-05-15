@@ -84,6 +84,7 @@ def generateBoundarywNoise(dt, reftime, t, ensemble_size):
     #Return the boundary with the noise added
     return BoundaryNoNoise + noise
 
+#FOR AN ENSEMBLE SIZE. USED BY SIMULATEENSEMBLE
 def timestep(x,i,settings, ensemble_ind): #return (h,u) one timestep later
     # take one timestep
     temp=x.copy() 
@@ -91,6 +92,17 @@ def timestep(x,i,settings, ensemble_ind): #return (h,u) one timestep later
     B=settings['B']
     rhs=B.dot(temp) #B*x
     rhs[0]=settings['h_left'][ensemble_ind, i] #left boundary
+    newx=spsolve(A,rhs)
+    return newx
+
+#FOR NO ENSEBLE SIZE (1 model). USED BY SIMULATE
+def timestep(x,i,settings): #return (h,u) one timestep later
+    # take one timestep
+    temp=x.copy() 
+    A=settings['A']
+    B=settings['B']
+    rhs=B.dot(temp) #B*x
+    rhs[0]=settings['h_left'][i] #left boundary
     newx=spsolve(A,rhs)
     return newx
 
@@ -154,12 +166,12 @@ def initialize(settings): #return (h,u,t) at initial time
     settings['B']=B
     return (x,t[0])
 
-def simulate(forcing, ensemble_size): #setting forcing=1 adds noise to the western boundary condition, ensemble_size is there for plotting purposes
+def simulate(forcing): #setting forcing=1 adds noise to the western boundary condition, ensemble_size is there for plotting purposes
     # for plots
     plt.close('all')
     #fig1,ax1 = plt.subplots() #maps: all state vars at one time
     # locations of observations
-    s=settings(forcing)
+    s=settings(forcing, 1)
     L=s['L']
     dx=s['dx']
     xlocs_waterlevel=np.array([0.0*L,0.25*L,0.5*L,0.75*L,0.99*L])
@@ -169,9 +181,9 @@ def simulate(forcing, ensemble_size): #setting forcing=1 adds noise to the weste
     loc_names=[]
     names=['Cadzand','Vlissingen','Terneuzen','Hansweert','Bath']
     for i in range(len(xlocs_waterlevel)):
-        loc_names.append('Averaged waterlevel at x=%.0f km %s for ensemble size %d'%(0.001*xlocs_waterlevel[i],names[i],ensemble_size))
+        loc_names.append('Averaged waterlevel at x=%.0f km %s for ensemble size %d'%(0.001*xlocs_waterlevel[i],names[i],1))
     for i in range(len(xlocs_velocity)):
-        loc_names.append('Averaged velocity at x=%.0f km %s for ensemble size %d'%(0.001*xlocs_velocity[i],names[i],ensemble_size))
+        loc_names.append('Averaged velocity at x=%.0f km %s for ensemble size %d'%(0.001*xlocs_velocity[i],names[i],1))
     s['xlocs_waterlevel']=xlocs_waterlevel
     s['xlocs_velocity']=xlocs_velocity
     s['ilocs']=ilocs
@@ -188,12 +200,12 @@ def simulate(forcing, ensemble_size): #setting forcing=1 adds noise to the weste
         series_data[:,i]=x[ilocs]
     return s, series_data
 
-def simulateEnsemble(forcing, ensemble_size): #setting forcing=1 adds noise to the western boundary condition, ensemble_size is there for plotting purposes
+def simulateEnsemble(ensemble_size): #setting forcing=1 adds noise to the western boundary condition, ensemble_size is there for plotting purposes
     # for plots
     plt.close('all')
     #fig1,ax1 = plt.subplots() #maps: all state vars at one time
     # locations of observations
-    s=settings(forcing, ensemble_size)
+    s=settings(1, ensemble_size) #forcing is always 1 for the ensembles
     L=s['L']
     dx=s['dx']
     xlocs_waterlevel=np.array([0.0*L,0.25*L,0.5*L,0.75*L,0.99*L])
@@ -255,7 +267,35 @@ def load_observations(s):
 def TestEnsemble():
     #Run the model for the given ensemble size
     ensemble_size = 1
-    s, sim = simulateEnsemble(1,ensemble_size)
+    s, sim = simulateEnsemble(ensemble_size)
+    
+    #Load the observed data
+    observed_data = load_observations(s)
+
+    #Calculate the error metrics just for the height data at the harbors 
+    rmse = RMSE(sim[0:5], observed_data[0:5])
+    bias = Bias(sim[0:5], observed_data[0:5])
+    infnorm =InfNorm(sim[0:5], observed_data[0:5])
+    onenorm =OneNorm(sim[0:5], observed_data[0:5])
+    print("Locations", ['Cadzand','Vlissingen','Terneuzen','Hansweert','Bath'])
+    print("Bias: ", bias)
+    print("RMSE: ", rmse)
+    print("InfNorm: ", infnorm)
+    print("OneNorm: ", onenorm)
+
+    #Plot the simulation results agains the observed data
+    plot_series(s['t'],sim,s,observed_data)
+
+    #Plot the error for each harbor
+    error_plot = sim[0:5]-observed_data[0:5]
+    plot_basic_bias(s['t'], error_plot)
+
+    plt.show()
+    return
+
+def TestOneSimNoForcing():
+    #Run the model for the given ensemble size
+    s, sim = simulate(forcing = 0)
     
     #Load the observed data
     observed_data = load_observations(s)
@@ -286,7 +326,8 @@ def TestEnsemble():
 
 #main program
 if __name__ == "__main__":
-    TestEnsemble()
+    #TestEnsemble()
+    TestOneSimNoForcing()
     
     
     
