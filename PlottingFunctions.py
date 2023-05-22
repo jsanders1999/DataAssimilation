@@ -6,15 +6,17 @@ def plot_state(fig,x,i,s):
     fig.clear()
     xh=s['x_h']
     ax1=fig.add_subplot(211)
-    ax1.plot(xh,x[0::2])
+    for j in range(x.shape[0]):
+        ax1.plot(xh,x[j, 0::2])
     ax1.set_ylabel('h')
     xu=s['x_u']
     ax2=fig.add_subplot(212)
-    ax2.plot(xu,x[1::2])
+    for j in range(x.shape[0]):
+        ax2.plot(xu,x[j, 1::2])
     ax2.set_ylabel('u')
     #plt.savefig("fig_map_%3.3d.png"%i)
     plt.draw()
-    plt.pause(0.2)
+    plt.pause(0.1)
 
 def plot_series(t,series_data,s,obs_data):
     # plot timeseries from model and observations

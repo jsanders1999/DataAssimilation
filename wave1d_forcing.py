@@ -230,18 +230,55 @@ def simulateEnsemble(ensemble_size): #setting forcing=1 adds noise to the wester
     times=s['times'][:] #[:40]
     series_data_mean=np.zeros((len(ilocs),len(t)))
     series_data_full=np.zeros((ensemble_size, len(ilocs),len(t)))
+    observed_data = load_observations(s)
+    print(observed_data.shape)
 
     for i in np.arange(0,len(t)):
         #print('timestep %d'%i)
         for j in range(ensemble_size):
             x_ensemble[j,:] = timestep(x_ensemble[j,:],i,s, j)
-        #x=timestep(x,i,s)
-        #plot_state(fig1,x,i,s) #show spatial plot; nice but slow
+        #Apply the Stochastic Ensemble Kalman Filetering step to x_ensemble[:,:]
+        
+        y = observed_data[:5,i]
+        #print("y", y)
+
+        x_ensemble = Apply_EnKF_Filter(x_ensemble, ilocs, y)
+
+        #plot_state(fig1,x_ensemble[:,:],i,s) #show spatial plot; nice but slow
         series_data_mean[:,i]=np.mean(x_ensemble[:, ilocs], axis = 0)#x[ilocs]
         series_data_full[:,:, i] = x_ensemble[:, ilocs]
 
     
     return s, series_data_mean, series_data_full
+
+def Apply_EnKF_Filter(x, ilocs, y):
+    """
+    x : (ensemble size, 2*n)
+    """
+    #Observation operator (5, 2*n)
+    H = np.zeros((5,x.shape[1]))
+    #Only observe the waterlevel, not the vertical velocity
+    for i, loc in enumerate(ilocs[0:5]):
+        H[i,loc] = 1
+    
+    #covariance matric of the oise added to the observations (5*5)
+    R = np.eye(5)*0.001
+
+    #Covariance of ensemble: (2*n, 2*n)
+    C = np.cov(x.T)
+    #plt.imshow(C)
+    #plt.show()
+
+    #Kalman Matrix
+    K = C@H.T@np.linalg.inv(H@C@H.T+R)
+    #plt.imshow(K)
+    #plt.show()
+    
+    #Apply filtering step to each x[j,:] in the ensemble x[:,:]
+    for j in range(x.shape[0]):
+        x[j,:] = x[j,:] + K@( y - H@x[j,:] )
+
+    return x
 
 def load_observations(s):
     times=s['times'][:] #[:40]
