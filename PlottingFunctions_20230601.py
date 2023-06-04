@@ -1,13 +1,18 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def plot_state(fig,x,i,s):
+def plot_state(fig,x,i,s, ilocs, y):
     #plot all waterlevels and velocities at one time
     fig.clear()
     xh=s['x_h']
+    L=s['L']
+    dx=s['dx']
+    xlocs_waterlevel=np.array([0.0*L,0.25*L,0.5*L,0.75*L,0.99*L])
     ax1=fig.add_subplot(211)
     for j in range(x.shape[0]):
         ax1.plot(xh,x[j, 0::2])
+    ax1.plot(xlocs_waterlevel, y, marker = "o", linestyle = "None" )
+        #print(ilocs, y)
     ax1.set_ylabel('h')
     xu=s['x_u']
     ax2=fig.add_subplot(212)
@@ -17,6 +22,9 @@ def plot_state(fig,x,i,s):
     #plt.savefig("fig_map_%3.3d.png"%i)
     plt.draw()
     plt.pause(0.1)
+
+    #plt.show()
+    #return
 
 def plot_series(t,series_data,s,obs_data):
     # plot timeseries from model and observations

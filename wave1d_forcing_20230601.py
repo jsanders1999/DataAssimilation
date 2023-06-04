@@ -44,7 +44,7 @@ def settings(forcing, ensemble_size):
     s['reftime']=reftime
     t=dt*np.arange(np.round(t_f/dt)+1) #MVL moved times to end of each timestep.
     s['t']=t
-    s['n_obs']=4 #set as 5 to use 'tide' data as observations, set as 4 to use 'waterlevel' data as observations
+    s['n_obs']=5 #set as 5 to use 'tide' data as observations, set as 4 to use 'waterlevel' data as observations
     if (forcing == 1):
         s['h_left'] = generateBoundarywNoise(dt, reftime, t, ensemble_size,4)
     else:
@@ -268,12 +268,14 @@ def simulate(forcing): #setting forcing=1 adds noise to the western boundary con
         series_data[:,i]=x[ilocs]
     return s, series_data
 
-def simulateEnsemble(ensemble_size): 
+def simulateEnsemble(ensemble_size, s=None, stateplots = False): 
     # for plots
     plt.close('all')
-    #fig1,ax1 = plt.subplots() #maps: all state vars at one time
+    if stateplots:
+        fig1, ax1 = plt.subplots() #maps: all state vars at one time
     # locations of observations
-    s=settings(1, ensemble_size) #forcing is always 1 for the ensembles
+    if s==None:
+        s=settings(1, ensemble_size) #forcing is always 1 for the ensembles
     L=s['L']
     dx=s['dx']
     xlocs_waterlevel, xlocs_velocity, ilocs = get_ilocs(s)
@@ -312,12 +314,18 @@ def simulateEnsemble(ensemble_size):
 
         #if i<60: (stop filtering after a certain time for forecasting in question 10)
         x_ensemble = Apply_EnKF_Filter(x_ensemble, ilocs, y)
-        #plot_state(fig1,x_ensemble[:,:],i,s) #show spatial plot; nice but slow
+        if stateplots:
+            plot_state(fig1,x_ensemble[:,:],i,s, ilocs, y) #show spatial plot; nice but slow
         series_data_mean[:,i]=np.mean(x_ensemble[:, ilocs], axis = 0)#x[ilocs]
         series_data_full[:,:, i] = x_ensemble[:, ilocs]
 
+        #Interpolate to find x at exaclty 37.25 hours (Three times the tidal period, will function as the initial condition in another simulation)
+        if t[i] == 133800+3*600:
+            x_3T = 1/2*np.mean(x_ensemble[:,:], axis = 0)
+        elif t[i] == 134400+3*600:
+            x_3T += 1/2*np.mean(x_ensemble[:,:], axis = 0)
     
-    return s, series_data_mean, series_data_full
+    return s, series_data_mean, series_data_full, x_ensemble, x_3T
 
 def Apply_EnKF_Filter(x, ilocs, y):
     """
@@ -342,8 +350,10 @@ def Apply_EnKF_Filter(x, ilocs, y):
 
     #Kalman Matrix
     K = C@H.T@np.linalg.inv(H@C@H.T+R)
-    #plt.imshow(K)
-    #plt.show()
+    #if x[0,-2]!=0:
+        #plt.imshow(K)
+        #plt.axes('equal')
+        #plt.show()
     
     #Apply filtering step to each x[j,:] in the ensemble x[:,:]
     for j in range(x.shape[0]):
@@ -355,7 +365,7 @@ def TestEnsemble(ensemble_size,PrintErrors,ShowPlots = True):
     #Run the model for the given ensemble size
     #ensemble_size = 50
     start_time = time.time()
-    s, sim_mean, sim_full = simulateEnsemble(ensemble_size)
+    s, sim_mean, sim_full, x_ensemble, x_3T = simulateEnsemble(ensemble_size)
     #np.savetxt('twin_1ensemble.csv',sim_mean[:],delimiter=',')
     
     #Load the observed data
@@ -450,11 +460,73 @@ def LoopEnsemble(max_ensemble_size,ensemble_increment,ShowPlots=True):
         plt.show()
     return rmse_list
 
+def TestEnselmbleInitialCondition(ensemble_size, PrintErrors, ShowPlots = True):
+    #Run the model for the given ensemble size
+    #ensemble_size = 50
+    start_time = time.time()
+    s, sim_mean_init, sim_full_init, x_ensemble_init, x_3T_init = simulateEnsemble(ensemble_size, stateplots = True)
+    x_init = x_3T_init #at t =37.25 hours
+
+    fig = plt.figure()
+    xh=s['x_h']
+    ax1=fig.add_subplot(211)
+    ax1.plot(xh, x_init[ 0::2])
+    ax1.set_ylabel('h')
+    xu=s['x_u']
+    ax2=fig.add_subplot(212)
+    ax2.plot(xu, x_init[1::2])
+    ax2.set_ylabel('u')
+
+    plt.show()
+
+    s["h_0"] = x_init[::2] 
+    s["y_0"] = x_init[1::2]
+
+    s, sim_mean, sim_full, x_ensemble, x_3T = simulateEnsemble(ensemble_size, s = s,  stateplots = False)
+    #np.savetxt('twin_1ensemble.csv',sim_mean[:],delimiter=',')
+    
+    #Load the observed data
+    #observed_data = np.loadtxt('twin_1ensemble.csv',delimiter=',')
+    n_obs = s['n_obs']
+    observed_data = load_observations(s)
+    
+    #Calculate the error metrics just for the height data at the harbors 
+    rmse = RMSE(sim_mean[5-n_obs:5], observed_data[5-n_obs:5])
+    bias = Bias(sim_mean[5-n_obs:5], observed_data[5-n_obs:5])
+    infnorm =InfNorm(sim_mean[5-n_obs:5], observed_data[5-n_obs:5])
+    onenorm =OneNorm(sim_mean[5-n_obs:5], observed_data[5-n_obs:5])
+    if PrintErrors:
+        if n_obs == 5:
+            print(["Locations: ", 'Cadzand','Vlissingen','Terneuzen','Hansweert','Bath'])
+        else:
+            print(["Locations: ", 'Vlissingen','Terneuzen','Hansweert','Bath'])
+        print(["Bias: ", *bias])
+        print(["RMSE: ", *rmse])
+        print(["InfNorm: ", *infnorm])
+        print(["OneNorm: ", *onenorm])
+    
+
+    if ShowPlots:
+        #Plot the simulation results agains the observed data
+        plot_ensemble_series_uncertainty(s['t'],sim_full,s,observed_data)
+
+        #Plot the error for each harbor
+        error_plot = sim_mean[0:n_obs]-observed_data[0:n_obs]
+        #plot_basic_bias(s['t'], error_plot)
+
+        plt.show()
+    print("Ensemble size: ",ensemble_size)
+    print("--- %s seconds ---" % (time.time() - start_time))
+    print("")
+    return np.mean(rmse)
+
+
     
 if __name__ == "__main__":
 
     #LoopEnsemble(1000,100,True)
 
-    TestEnsemble(100,True,True)
+    TestEnsemble(100,True,False)
     #TestOneSimNoForcing(True,True)
+    TestEnselmbleInitialCondition(100,True,True)
 
