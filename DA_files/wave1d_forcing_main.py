@@ -11,7 +11,7 @@ from scipy.fft import fft, ifft, fftfreq
 #from numba import njit
 
 from ErrorStatistics import RMSE, Bias, InfNorm, OneNorm
-from PlottingFunctionsDA import plot_state, plot_series, plot_ensemble_series, plot_ensemble_series_uncertainty, plot_basic_bias
+from PlottingFunctions_20230601 import plot_state, plot_series, plot_ensemble_series, plot_ensemble_series_uncertainty, plot_basic_bias
 
 minutes_to_seconds=60.
 hours_to_seconds=60.*60.
@@ -293,6 +293,7 @@ def Apply_EnKF_Filter(x, ilocs, y):
     """
     x : (ensemble size, 2*n)
     """
+    sigma = 0.1
     n_obs = y.shape[0]
     #print(n_obs)
     #Observation operator (n_obs, 2*n)
@@ -303,7 +304,7 @@ def Apply_EnKF_Filter(x, ilocs, y):
     
     #covariance matric of the noise added to the observations (n_obs*n_obs)
     #R = np.eye(n_obs)*(0.2*(np.sqrt(1-np.exp(-600/3))))**2 
-    R = np.eye(n_obs)*0.01
+    R = np.eye(n_obs)*sigma**2
 
     #Covariance of ensemble: (2*n, 2*n)
     C = np.cov(x.T)
@@ -319,7 +320,7 @@ def Apply_EnKF_Filter(x, ilocs, y):
     
     #Apply filtering step to each x[j,:] in the ensemble x[:,:]
     for j in range(x.shape[0]):
-        x[j,:] = x[j,:] + K@( y - H@x[j,:] )
+        x[j,:] = x[j,:] + K@( y + np.random.normal(0, sigma, size = n_obs) - H@x[j,:] )
 
     return x
 
@@ -426,9 +427,9 @@ def TestEnsemble(ensemble_size,stop_filtering, forcing, n_obs, western_boundary_
     print("")
     return np.mean(rmse)
 
-def TestOneSimNoForcing(PrintErrors,ShowPlots = True):
+def TestOneSimNoForcing(forcing,PrintErrors,ShowPlots = True):
     #Run the model for the given ensemble size
-    s, sim = simulate(forcing = 0)
+    s, sim = simulate(forcing)
     n_obs = s['n_obs']
     
     #Load the observed data
@@ -468,8 +469,7 @@ def LoopEnsemble(max_ensemble_size,ensemble_increment,seed_no=1234):
     rmse_list = []
     n_loops = np.floor(max_ensemble_size/ensemble_increment).astype(int)
     for j in range(1,n_loops+1):
-        rmse_list.append(TestEnsemble(j*ensemble_increment,stop_filtering=48, forcing=seed_no, n_obs=5, western_boundary_type=1,twin=False,PrintErrors=False,ShowPlots = False))
-    #print(rmse_list)
+        rmse_list.append(TestEnsemble(j*ensemble_increment,48, seed_no, 5, 1,twin=False,PrintErrors=False,ShowPlots = False))
     return rmse_list
 
 def ChangingSeedLoops(max_ensemble_size,ensemble_increment,n_simulations,seed_start=1234,ShowPlots=True):
@@ -517,13 +517,16 @@ def TestEnsembleInitialCondition(ensemble_size, start_forecasting, n_observation
     s["n_obs"] = n_observations
     s['h_left'] = generateBoundarywNoise(s['dt'], s['reftime'], s['t'], ensemble_size,western_boundary,1234)    
     s, sim_mean, sim_full, x_ensemble, x_3T = simulateEnsemble(ensemble_size, stop_filtering=start_forecasting, forcing=1234, n_obs=4, western_boundary_type=4, s = s, twin=False, stateplots = False)
-    #s, sim_mean, sim_full, x_ensemble, x_3T = simulateEnsemble(ensemble_size, stop_filtering=24, western_boundary_type=1, n_obs=4, forcing=1234, s = s, twin=False, stateplots = False)
-    #np.savetxt('twin_1ensemble.csv',sim_mean[:],delimiter=',')
     
     #Load the observed data
-    #observed_data = np.loadtxt('twin_1ensemble.csv',delimiter=',')
     n_obs = s['n_obs']
     observed_data = load_observations(s)
+    peak_times = (np.floor((26.5+0.4*np.arange(5))*len(s['t'])/48)+1).astype(int)
+    #print(peak_times)
+    peak_diff = 0
+    for i in range(5-n_obs,5):
+        peak_diff = peak_diff + np.abs(sim_mean[i,peak_times[i]]-observed_data[i,peak_times[i]])/observed_data[i,peak_times[i]]
+    peak_diff = peak_diff/n_obs
     
     #Calculate the error metrics just for the height data at the harbors 
     rmse = RMSE(sim_mean[5-n_obs:5], observed_data[5-n_obs:5])
@@ -553,7 +556,7 @@ def TestEnsembleInitialCondition(ensemble_size, start_forecasting, n_observation
     print("Ensemble size: ",ensemble_size)
     print("--- %s seconds ---" % (time.time() - start_time))
     print("")
-    return np.mean(rmse)
+    return np.mean(rmse),peak_diff
 
 def wave_subtraction(wave1,wave2):
     return fft(wave1)-fft(wave2)
@@ -585,7 +588,7 @@ def storm_surge(ShowPlots):
     start_surge = np.floor(surge_hour*ntimes/48).astype(int)+1
     end_surge = start_surge + np.floor(surge_period*ntimes/48).astype(int)+1
     f_surge = np.zeros((5,end_surge[0]-start_surge[0]),dtype=complex)
-    print("f_surge ",np.size(f_surge[0,:]))
+    #print("f_surge ",np.size(f_surge[0,:]))
     f_temp = np.zeros((end_surge[0]-start_surge[0]),dtype=complex)
     if_surge = np.zeros((5,end_surge[0]-start_surge[0]))
     for i in range(5):
@@ -632,24 +635,37 @@ def storm_surge(ShowPlots):
 
 def ForecastingComparison(western_boundary,forecast_start,forecast_increment,no_forecasts,ShowPlots):
     rmse_list = []
+    peak_diff_list = []
     for i in range(no_forecasts):
-        rmse_list.append(TestEnsembleInitialCondition(100, forecast_start+i, 4, western_boundary, PrintErrors =True, ShowPlots = False))
-    x_vector =np.linspace(forecast_start,forecast_start+forecast_increment*no_forecasts,no_forecasts)
+        rmse_mean, peak_diff = TestEnsembleInitialCondition(100, forecast_start+i, 4, western_boundary, PrintErrors =True, ShowPlots = False)
+        rmse_list.append(rmse_mean)
+        peak_diff_list.append(peak_diff)
+    #x_vector =np.linspace(forecast_start,forecast_start+forecast_increment*no_forecasts,no_forecasts)
+    x_vector = np.linspace(0,forecast_increment*no_forecasts,no_forecasts)
+    rmse_list.reverse()
+    peak_diff_list.reverse()
     if ShowPlots:
-        print(rmse_list)
-        plt.plot(x_vector, rmse_list, 'o')
+        fig, ax1 = plt.subplots()
+        fig, ax2 = plt.subplots()
+        ax1.plot(x_vector, rmse_list, 'o',label='Mean RMSE')
+        ax2.plot(x_vector, peak_diff_list, 'o',label='Mean relative error at peak time')
         if western_boundary == 4:
-            plt.title('RMSE of forecasting results starting from varying times \n with Vlissingen data as western BC')
+            ax1.set_title('Mean RMSE of forecasting results starting from varying times \n with Vlissingen data as western BC')
+            ax2.set_title('Peak time errors of forecasting results starting from varying times \n with Vlissingen data as western BC')
         elif western_boundary == 5:
-            plt.title('RMSE of forecasting results starting from varying times \n with Cadzand tide data + average surge as western BC')
-        plt.xlabel('forecasting starts/filtering stops [h]')
-        plt.ylabel('Mean RMSE')
+            ax1.set_title('Mean RMSE of forecasting results starting from varying times \n with Cadzand tide data + average surge as western BC')
+            ax2.set_title('Peak time errors of forecasting results starting from varying times \n with Cadzand tide data + average surge as western BC')
+        ax1.set_xlabel('Lead-up time (time to peak when forecasting begins) [h]')
+        ax2.set_xlabel('Lead-up time (time to peak when forecasting begins) [h]')
+        ax1.set_ylabel('Mean RMSE')
+        ax2.set_ylabel('Mean relative error')
         plt.show()
 
 
 if __name__ == "__main__":
     answer = True
     while answer:
+        print("Data Assimilation Project by Julian Sanders (4675045) and A. Mauditra A. Matin (5689252)")
         choice = input("Go to Question (choose 3, 4, 6, 7, 8, 9, or 10; enter any other number to exit): ")
         if choice == '3':
             TestOneSimNoForcing(forcing=0,PrintErrors =True,ShowPlots = True)
@@ -663,11 +679,12 @@ if __name__ == "__main__":
             elif twin_choice == 'n':
                 answer = False
                 break
-            else: twin_choice = input("Invalid input. Show twin experiment? y/n: ")
+            else: twin_choice = input("Invalid input. Enter any character: ")
         elif choice == '7':
             #VERY SLOW
-            ChangingSeedLoops(100,1000,5,seed_start=1234,ShowPlots=True)
+            ChangingSeedLoops(1000,100,5,seed_start=1234,ShowPlots=True)
         elif choice == '8':
+            print("Set 'stateplots' to 'True' in simulateEnsemble in the function TestEnsembleInitialCondition to see state plots")
             TestEnsembleInitialCondition(ensemble_size=100, start_forecasting=48, n_observations=5, western_boundary=1, PrintErrors =True, ShowPlots = True)
         elif choice == '9':
             generate_cadzand_waterlevel = input('Generate Cadzand waterlevel data? y/n: ')
@@ -676,7 +693,7 @@ if __name__ == "__main__":
                 np.savetxt('cadzand_waterlevel_model.csv',cadzand_waterlevel_model,delimiter=',')
             boundary_q = True
             while boundary_q:
-                boundary_choice = input("Enter 1 for Vlissingen data as western boundary condition, 2 for Cadzand tide + modeled surge data as boundary condition : ")
+                boundary_choice = input("Enter 1 for Vlissingen data as western boundary condition, 2 for Cadzand tide + modeled surge data as boundary condition: ")
                 if boundary_choice == '1':
                     TestEnsembleInitialCondition(ensemble_size=100, start_forecasting=48, n_observations=4, western_boundary=4, PrintErrors =True, ShowPlots = True)
                     boundary_q = False
@@ -689,37 +706,14 @@ if __name__ == "__main__":
                     boundary_choice = input("Invalid. Enter any character: ")
 
         elif choice == '10':
-            forecast_choice = input("Type 1 to see forecast results from one time, type 2 to see comparison of RMSE for different forecast results: ")
+            forecast_choice = input("Enter 1 to see forecast results from one time, 2 to see comparison of errors for different forecast results: ")
             if forecast_choice == '1':
                 forecast_time = input("Enter when to start forecasting (<= 48): ")
-                boundary_q = True
-                while boundary_q:
-                    boundary_choice = input("Enter 1 for Vlissingen data as western boundary condition, 2 for Cadzand tide + modeled surge data as boundary condition: ")
-                    if boundary_choice == '1':
-                        TestEnsembleInitialCondition(ensemble_size=100, start_forecasting=int(forecast_time), n_observations=4, western_boundary=4, PrintErrors =True, ShowPlots = True)
-                        boundary_q = False
-                        break
-                    elif boundary_choice == '2':
-                        TestEnsembleInitialCondition(ensemble_size=100, start_forecasting=int(forecast_time), n_observations=4, western_boundary=5, PrintErrors =True, ShowPlots = True)
-                        boundary_q = False
-                        break
-                    else:
-                        boundary_choice = input("Invalid. Enter any character: ")
+                TestEnsembleInitialCondition(ensemble_size=100, start_forecasting=int(forecast_time), n_observations=4, western_boundary=5, PrintErrors =True, ShowPlots = True)
             elif forecast_choice == '2':
-                boundary_q = True
-                while boundary_q:
-                    boundary_choice = input("Enter 1 for Vlissingen data as western boundary condition, 2 for Cadzand tide + modeled surge data as boundary condition: ")
-                    if boundary_choice == '1':
-                        ForecastingComparison(4,16,1,10,ShowPlots=True)
-                        boundary_q = False
-                        break
-                    elif boundary_choice == '2':
-                        ForecastingComparison(5,16,1,10,ShowPlots=True)
-                        boundary_q = False
-                        break
-                    else:
-                        boundary_choice = input("Invalid. Enter any character: ")
+                    ForecastingComparison(5,16,1,10,ShowPlots=True)
             else:
+                answer = False
                 break
             
         else:

@@ -70,7 +70,7 @@ def plot_ensemble_series(t,series_data,s,obs_data):
 
 def plot_ensemble_series_uncertainty(t,series_data,s,obs_data,stop_filtering, n_obs, western_boundary_type):
     # plot timeseries from model and observations
-    print("series_data_shape ",np.shape(series_data)[0])
+    #print("series_data_shape ",np.shape(series_data)[0])
     phenom = ['tide', 'storm']
     west_bound = ['Cadzand tide data','simple sine function','generated twin data','Vlissingen water level data','Cadzand tide data + modeled surge']
     phenom_string =phenom[5-n_obs]
@@ -82,7 +82,7 @@ def plot_ensemble_series_uncertainty(t,series_data,s,obs_data,stop_filtering, n_
     mean_arr = np.mean(series_data[:,:,:], axis = 0)
     std_arr = np.std(series_data[:,:,:], axis = 0)  
     print("st. deviation: ", np.std(series_data[:,:,:], axis = (0,2)))
-    print(np.shape(obs_data))
+    #print(np.shape(obs_data))
     for i in range(nseries):
         fig,ax=plt.subplots()
         ntimes=min(len(t),obs_data.shape[1])
@@ -100,7 +100,6 @@ def plot_ensemble_series_uncertainty(t,series_data,s,obs_data,stop_filtering, n_
             ax.set_title(str(np.shape(series_data)[0])+'-ensemble model at '+name[i]+' ('+phenom_string+') \n with '+west_bound_string+' as western BC')
             ax.set_ylabel('height [m]')
             filename.append('q9_v_waterlevel_'+name[i]+'.eps')
-            plt.savefig(filename[i])
         else:
             if (stop_filtering > 0) and (stop_filtering != 48):
                 ax.vlines(x=stop_filtering,ymin=-1.5,ymax=1.5,color='black',linewidth=0.75)
